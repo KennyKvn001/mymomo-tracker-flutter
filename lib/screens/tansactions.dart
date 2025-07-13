@@ -363,7 +363,10 @@ class _TransactionsState extends State<Transactions> {
       if (transaction.isIncoming) {
         totalIncome += transaction.amount;
       } else {
-        if (transaction.description.toLowerCase().contains('payment of')) {
+        if (transaction.description.toLowerCase().contains('payment of') ||
+            transaction.description
+                .toLowerCase()
+                .contains('A transaction of')) {
           totalPayments += transaction.amount;
         } else {
           totalExpenses += transaction.amount;
@@ -686,7 +689,10 @@ class _TransactionsState extends State<Transactions> {
   Widget _buildTransactionCard(Transaction transaction) {
     final formatter = NumberFormat("#,##0", "en_US");
     final bool isPayment =
-        transaction.description.toLowerCase().contains('payment of');
+        transaction.description.toLowerCase().contains('payment of') ||
+            transaction.description
+                .toLowerCase()
+                .contains('MTN RWANDACELL LIMITED');
     final amountColor = transaction.isIncoming
         ? Colors.green
         : (isPayment ? Colors.orange : Colors.red);

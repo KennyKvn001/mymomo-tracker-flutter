@@ -273,7 +273,8 @@ class _HomeViewState extends State<HomeView> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => const AnalyticsView(),
+                        builder: (context) =>
+                            const AnalyticsView(showBackButton: true),
                       ),
                     );
                   },
@@ -504,7 +505,10 @@ class _HomeViewState extends State<HomeView> {
   Widget _buildTransactionItem(Transaction transaction) {
     final formatter = NumberFormat("#,##0", "en_US");
     final bool isPayment =
-        transaction.description.toLowerCase().contains('payment of');
+        transaction.description.toLowerCase().contains('payment of') ||
+            transaction.description
+                .toLowerCase()
+                .contains('MTN RWANDACELL LIMITED');
     final amountColor = transaction.isIncoming
         ? Colors.green
         : (isPayment ? Colors.orange : Colors.red);

@@ -13,218 +13,671 @@ class ChartScreen extends StatefulWidget {
 }
 
 class _ChartScreenState extends State<ChartScreen> {
-  String _selectedPeriod = 'Monthly';
+  String _selectedPeriod = 'Weekly';
   final List<String> _periods = ['Weekly', 'Monthly', 'Yearly'];
-
-  List<FlSpot> _getSpots() {
-    if (widget.transactions.isEmpty) return [];
-    
-    final Map<DateTime, double> groupedData = {};
-    DateTime? minDate;
-    DateTime? maxDate;
-    
-    for (var transaction in widget.transactions) {
-      final date = _getDateByPeriod(transaction.date);
-      // Ensure we don't store negative values
-      final amount = transaction.amount.abs();
-      groupedData[date] = (groupedData[date] ?? 0) + 
-          (transaction.isIncoming ? amount : -amount);
-          
-      minDate = minDate == null || date.isBefore(minDate) ? date : minDate;
-      maxDate = maxDate == null || date.isAfter(maxDate) ? date : maxDate;
-    }
-
-    // Fill in missing dates with zero values
-    if (minDate != null && maxDate != null) {
-      DateTime current = minDate;
-      while (current.isBefore(maxDate) || current.isAtSameMomentAs(maxDate)) {
-        groupedData.putIfAbsent(current, () => 0);
-        current = _getNextDate(current);
-      }
-    }
-
-    final sortedDates = groupedData.keys.toList()..sort();
-    return sortedDates.asMap().entries.map((entry) {
-      return FlSpot(
-        entry.key.toDouble(),
-        groupedData[entry.value]!.abs() // Ensure positive values
-      );
-    }).toList();
-  }
-
-  DateTime _getDateByPeriod(DateTime date) {
-    switch (_selectedPeriod) {
-      // case 'Daily':
-      //   return DateTime(date.year, date.month, date.day);
-      case 'Weekly':
-        return DateTime(date.year, date.month, date.day - date.weekday);
-      case 'Monthly':
-        return DateTime(date.year, date.month);
-      case 'Yearly':
-        return DateTime(date.year);
-      default:
-        return date;
-    }
-  }
-
-  DateTime _getNextDate(DateTime date) {
-    switch (_selectedPeriod) {
-      // case 'Daily':
-      //   return date.add(const Duration(days: 1));
-      case 'Weekly':
-        return date.add(const Duration(days: 7));
-      case 'Monthly':
-        return DateTime(date.year, date.month + 1);
-      case 'Yearly':
-        return DateTime(date.year + 1);
-      default:
-        return date;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
-    final spots = _getSpots();
-    final formatter = NumberFormat("#,##0", "en_US");
-
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: SegmentedButton<String>(
-            segments: _periods.map((period) => 
-              ButtonSegment<String>(
-                value: period, 
-                label: Text(period)
-              )
-            ).toList(),
-            selected: {_selectedPeriod},
-            onSelectionChanged: (Set<String> selection) {
-              setState(() {
-                _selectedPeriod = selection.first;
-              });
-            },
-          ),
+        _buildPeriodSelector(),
+        Expanded(
+          child: _buildSelectedChart(),
         ),
-        if (spots.isEmpty)
-          const Expanded(
-            child: Center(
-              child: Text('No data available for the selected period'),
-            ),
-          )
-        else
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: LineChart(
-                LineChartData(
-                  gridData: FlGridData(
-                    show: true,
-                    drawVerticalLine: true,
-                    horizontalInterval: 1000000, // Adjust based on your data range
-                    verticalInterval: 1,
-                  ),
-                  titlesData: FlTitlesData(
-                    show: true,
-                    topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    leftTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        getTitlesWidget: (value, meta) {
-                          if (value == 0) return const Text('0');
-                          return Text(
-                            '${formatter.format(value)} RWF',
-                            style: const TextStyle(fontSize: 10),
-                          );
-                        },
-                        interval: 1000000, // Adjust based on your data range
-                      ),
-                    ),
-                    bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        getTitlesWidget: (value, meta) {
-                          if (value >= 0 && value < spots.length) {
-                            final date = DateTime.fromMillisecondsSinceEpoch(
-                              spots[value.toInt()].x.toInt()
-                            );
-                            return RotatedBox(
-                              quarterTurns: 1,
-                              child: Text(
-                                _getFormattedDate(date),
-                                style: const TextStyle(fontSize: 10),
-                              ),
-                            );
-                          }
-                          return const Text('');
-                        },
-                        interval: 1,
-                      ),
-                    ),
-                    rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  ),
-                  borderData: FlBorderData(show: true),
-                  lineBarsData: [
-                    LineChartBarData(
-                      spots: spots,
-                      isCurved: true,
-                      color: Colors.green,
-                      barWidth: 3,
-                      isStrokeCapRound: true,
-                      dotData: FlDotData(
-                        show: true,
-                        getDotPainter: (spot, percent, barData, index) {
-                          return FlDotCirclePainter(
-                            radius: 4,
-                            color: Colors.green,
-                            strokeWidth: 1,
-                            strokeColor: Colors.white,
-                          );
-                        },
-                      ),
-                      belowBarData: BarAreaData(
-                        show: true,
-                        color: Colors.green.withOpacity(0.15),
-                      ),
-                    ),
-                  ],
-                  lineTouchData: LineTouchData(
-                    enabled: true,
-                    touchTooltipData: LineTouchTooltipData(
-                      tooltipRoundedRadius: 8,
-                      getTooltipItems: (List<LineBarSpot> touchedSpots) {
-                        return touchedSpots.map((LineBarSpot touchedSpot) {
-                          final value = touchedSpot.y.abs();
-                          return LineTooltipItem(
-                            '${formatter.format(value)} RWF',
-                            const TextStyle(color: Colors.white, fontSize: 12),
-                          );
-                        }).toList();
-                      },
-                      fitInsideHorizontally: true,
-                      fitInsideVertically: true,
+      ],
+    );
+  }
+
+  Widget _buildPeriodSelector() {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: _periods.map((period) {
+          final isSelected = _selectedPeriod == period;
+          return Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _selectedPeriod = period),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: isSelected ? Colors.white : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: isSelected
+                      ? [
+                          BoxShadow(
+                            color: Colors.grey.shade300,
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          )
+                        ]
+                      : null,
+                ),
+                child: Center(
+                  child: Text(
+                    period,
+                    style: TextStyle(
+                      fontWeight:
+                          isSelected ? FontWeight.bold : FontWeight.normal,
+                      color: isSelected ? Colors.purple : Colors.grey.shade600,
                     ),
                   ),
                 ),
               ),
             ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildSelectedChart() {
+    switch (_selectedPeriod) {
+      case 'Weekly':
+        return WeeklyChart(transactions: widget.transactions);
+      case 'Monthly':
+        return MonthlyChart(transactions: widget.transactions);
+      case 'Yearly':
+        return YearlyChart(transactions: widget.transactions);
+      default:
+        return WeeklyChart(transactions: widget.transactions);
+    }
+  }
+}
+
+// Weekly Chart Widget
+class WeeklyChart extends StatelessWidget {
+  final List<Transaction> transactions;
+
+  const WeeklyChart({super.key, required this.transactions});
+
+  @override
+  Widget build(BuildContext context) {
+    final weeklyData = _getWeeklyData();
+
+    if (weeklyData.isEmpty) {
+      return const Center(
+        child: Text('No data available for weekly view'),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Weekly Overview',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey.shade800,
+            ),
           ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: BarChart(
+              BarChartData(
+                alignment: BarChartAlignment.spaceAround,
+                maxY: _getMaxAmount(weeklyData) * 1.2,
+                barTouchData: BarTouchData(
+                  touchTooltipData: BarTouchTooltipData(
+                    tooltipRoundedRadius: 8,
+                    getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                      final data = weeklyData[groupIndex];
+                      final amount = rodIndex == 0 ? data.income : data.expense;
+                      final type = rodIndex == 0 ? 'Income' : 'Expense';
+                      return BarTooltipItem(
+                        '$type\n${NumberFormat("#,##0").format(amount)} RWF',
+                        const TextStyle(color: Colors.white, fontSize: 12),
+                      );
+                    },
+                  ),
+                ),
+                titlesData: FlTitlesData(
+                  topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      getTitlesWidget: (value, meta) {
+                        if (value.toInt() < weeklyData.length) {
+                          final data = weeklyData[value.toInt()];
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              data.label,
+                              style: const TextStyle(fontSize: 10),
+                            ),
+                          );
+                        }
+                        return const Text('');
+                      },
+                    ),
+                  ),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 60,
+                      getTitlesWidget: (value, meta) {
+                        return Text(
+                          NumberFormat.compact().format(value),
+                          style: const TextStyle(fontSize: 10),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                borderData: FlBorderData(show: false),
+                barGroups: weeklyData.asMap().entries.map((entry) {
+                  return BarChartGroupData(
+                    x: entry.key,
+                    barRods: [
+                      BarChartRodData(
+                        toY: entry.value.income,
+                        color: Colors.green,
+                        width: 16,
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(4),
+                          topRight: Radius.circular(4),
+                        ),
+                      ),
+                      BarChartRodData(
+                        toY: entry.value.expense,
+                        color: Colors.red,
+                        width: 16,
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(4),
+                          topRight: Radius.circular(4),
+                        ),
+                      ),
+                    ],
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+          _buildLegend(),
+        ],
+      ),
+    );
+  }
+
+  List<ChartData> _getWeeklyData() {
+    final now = DateTime.now();
+    final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
+    final weeklyData = <ChartData>[];
+
+    for (int i = 0; i < 7; i++) {
+      final day = startOfWeek.add(Duration(days: i));
+      final dayTransactions = transactions
+          .where((t) =>
+              t.date.year == day.year &&
+              t.date.month == day.month &&
+              t.date.day == day.day)
+          .toList();
+
+      double income = 0;
+      double expense = 0;
+
+      for (var transaction in dayTransactions) {
+        if (transaction.isIncoming) {
+          income += transaction.amount;
+        } else {
+          expense += transaction.amount;
+        }
+      }
+
+      weeklyData.add(ChartData(
+        label: DateFormat('E').format(day),
+        income: income,
+        expense: expense,
+      ));
+    }
+
+    return weeklyData;
+  }
+
+  double _getMaxAmount(List<ChartData> data) {
+    double max = 0;
+    for (var item in data) {
+      if (item.income > max) max = item.income;
+      if (item.expense > max) max = item.expense;
+    }
+    return max;
+  }
+
+  Widget _buildLegend() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _buildLegendItem('Income', Colors.green),
+        const SizedBox(width: 20),
+        _buildLegendItem('Expense', Colors.red),
       ],
     );
   }
 
-  String _getFormattedDate(DateTime date) {
-    switch (_selectedPeriod) {
-      // case 'Daily':
-      //   return DateFormat('MMM d').format(date);
-      case 'Weekly':
-        return DateFormat('MMM d').format(date);
-      case 'Monthly':
-        return DateFormat('MMM y').format(date);
-      case 'Yearly':
-        return DateFormat('yyyy').format(date);
-      default:
-        return '';
-    }
+  Widget _buildLegendItem(String label, Color color) {
+    return Row(
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12),
+        ),
+      ],
+    );
   }
+}
+
+// Monthly Chart Widget
+class MonthlyChart extends StatelessWidget {
+  final List<Transaction> transactions;
+
+  const MonthlyChart({super.key, required this.transactions});
+
+  @override
+  Widget build(BuildContext context) {
+    final monthlyData = _getMonthlyData();
+
+    if (monthlyData.isEmpty) {
+      return const Center(
+        child: Text('No data available for monthly view'),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Monthly Overview',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey.shade800,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: BarChart(
+              BarChartData(
+                alignment: BarChartAlignment.spaceAround,
+                maxY: _getMaxAmount(monthlyData) * 1.2,
+                barTouchData: BarTouchData(
+                  touchTooltipData: BarTouchTooltipData(
+                    tooltipRoundedRadius: 8,
+                    getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                      final data = monthlyData[groupIndex];
+                      final amount = rodIndex == 0 ? data.income : data.expense;
+                      final type = rodIndex == 0 ? 'Income' : 'Expense';
+                      return BarTooltipItem(
+                        '$type\n${NumberFormat("#,##0").format(amount)} RWF',
+                        const TextStyle(color: Colors.white, fontSize: 12),
+                      );
+                    },
+                  ),
+                ),
+                titlesData: FlTitlesData(
+                  topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      getTitlesWidget: (value, meta) {
+                        if (value.toInt() < monthlyData.length) {
+                          final data = monthlyData[value.toInt()];
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              data.label,
+                              style: const TextStyle(fontSize: 10),
+                            ),
+                          );
+                        }
+                        return const Text('');
+                      },
+                    ),
+                  ),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 60,
+                      getTitlesWidget: (value, meta) {
+                        return Text(
+                          NumberFormat.compact().format(value),
+                          style: const TextStyle(fontSize: 10),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                borderData: FlBorderData(show: false),
+                barGroups: monthlyData.asMap().entries.map((entry) {
+                  return BarChartGroupData(
+                    x: entry.key,
+                    barRods: [
+                      BarChartRodData(
+                        toY: entry.value.income,
+                        color: Colors.green,
+                        width: 20,
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(6),
+                          topRight: Radius.circular(6),
+                        ),
+                      ),
+                      BarChartRodData(
+                        toY: entry.value.expense,
+                        color: Colors.red,
+                        width: 20,
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(6),
+                          topRight: Radius.circular(6),
+                        ),
+                      ),
+                    ],
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+          _buildLegend(),
+        ],
+      ),
+    );
+  }
+
+  List<ChartData> _getMonthlyData() {
+    final now = DateTime.now();
+    final monthlyData = <ChartData>[];
+
+    for (int i = 5; i >= 0; i--) {
+      final month = DateTime(now.year, now.month - i, 1);
+      final monthTransactions = transactions
+          .where(
+              (t) => t.date.year == month.year && t.date.month == month.month)
+          .toList();
+
+      double income = 0;
+      double expense = 0;
+
+      for (var transaction in monthTransactions) {
+        if (transaction.isIncoming) {
+          income += transaction.amount;
+        } else {
+          expense += transaction.amount;
+        }
+      }
+
+      monthlyData.add(ChartData(
+        label: DateFormat('MMM').format(month),
+        income: income,
+        expense: expense,
+      ));
+    }
+
+    return monthlyData;
+  }
+
+  double _getMaxAmount(List<ChartData> data) {
+    double max = 0;
+    for (var item in data) {
+      if (item.income > max) max = item.income;
+      if (item.expense > max) max = item.expense;
+    }
+    return max;
+  }
+
+  Widget _buildLegend() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _buildLegendItem('Income', Colors.green),
+        const SizedBox(width: 20),
+        _buildLegendItem('Expense', Colors.red),
+      ],
+    );
+  }
+
+  Widget _buildLegendItem(String label, Color color) {
+    return Row(
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12),
+        ),
+      ],
+    );
+  }
+}
+
+// Yearly Chart Widget
+class YearlyChart extends StatelessWidget {
+  final List<Transaction> transactions;
+
+  const YearlyChart({super.key, required this.transactions});
+
+  @override
+  Widget build(BuildContext context) {
+    final yearlyData = _getYearlyData();
+
+    if (yearlyData.isEmpty) {
+      return const Center(
+        child: Text('No data available for yearly view'),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Yearly Overview',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey.shade800,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: BarChart(
+              BarChartData(
+                alignment: BarChartAlignment.spaceAround,
+                maxY: _getMaxAmount(yearlyData) * 1.2,
+                barTouchData: BarTouchData(
+                  touchTooltipData: BarTouchTooltipData(
+                    tooltipRoundedRadius: 8,
+                    getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                      final data = yearlyData[groupIndex];
+                      final amount = rodIndex == 0 ? data.income : data.expense;
+                      final type = rodIndex == 0 ? 'Income' : 'Expense';
+                      return BarTooltipItem(
+                        '$type\n${NumberFormat("#,##0").format(amount)} RWF',
+                        const TextStyle(color: Colors.white, fontSize: 12),
+                      );
+                    },
+                  ),
+                ),
+                titlesData: FlTitlesData(
+                  topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      getTitlesWidget: (value, meta) {
+                        if (value.toInt() < yearlyData.length) {
+                          final data = yearlyData[value.toInt()];
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              data.label,
+                              style: const TextStyle(fontSize: 10),
+                            ),
+                          );
+                        }
+                        return const Text('');
+                      },
+                    ),
+                  ),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 60,
+                      getTitlesWidget: (value, meta) {
+                        return Text(
+                          NumberFormat.compact().format(value),
+                          style: const TextStyle(fontSize: 10),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                borderData: FlBorderData(show: false),
+                barGroups: yearlyData.asMap().entries.map((entry) {
+                  return BarChartGroupData(
+                    x: entry.key,
+                    barRods: [
+                      BarChartRodData(
+                        toY: entry.value.income,
+                        color: Colors.green,
+                        width: 30,
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(8),
+                          topRight: Radius.circular(8),
+                        ),
+                      ),
+                      BarChartRodData(
+                        toY: entry.value.expense,
+                        color: Colors.red,
+                        width: 30,
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(8),
+                          topRight: Radius.circular(8),
+                        ),
+                      ),
+                    ],
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+          _buildLegend(),
+        ],
+      ),
+    );
+  }
+
+  List<ChartData> _getYearlyData() {
+    final now = DateTime.now();
+    final yearlyData = <ChartData>[];
+
+    for (int i = 2; i >= 0; i--) {
+      final year = now.year - i;
+      final yearTransactions =
+          transactions.where((t) => t.date.year == year).toList();
+
+      double income = 0;
+      double expense = 0;
+
+      for (var transaction in yearTransactions) {
+        if (transaction.isIncoming) {
+          income += transaction.amount;
+        } else {
+          expense += transaction.amount;
+        }
+      }
+
+      yearlyData.add(ChartData(
+        label: year.toString(),
+        income: income,
+        expense: expense,
+      ));
+    }
+
+    return yearlyData;
+  }
+
+  double _getMaxAmount(List<ChartData> data) {
+    double max = 0;
+    for (var item in data) {
+      if (item.income > max) max = item.income;
+      if (item.expense > max) max = item.expense;
+    }
+    return max;
+  }
+
+  Widget _buildLegend() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _buildLegendItem('Income', Colors.green),
+        const SizedBox(width: 20),
+        _buildLegendItem('Expense', Colors.red),
+      ],
+    );
+  }
+
+  Widget _buildLegendItem(String label, Color color) {
+    return Row(
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12),
+        ),
+      ],
+    );
+  }
+}
+
+// Data model for charts
+class ChartData {
+  final String label;
+  final double income;
+  final double expense;
+
+  ChartData({
+    required this.label,
+    required this.income,
+    required this.expense,
+  });
 }

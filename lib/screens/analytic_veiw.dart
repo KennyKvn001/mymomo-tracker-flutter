@@ -20,6 +20,7 @@ class _AnalyticsViewState extends State<AnalyticsView> {
   bool _isLoading = true;
   String? _error;
   DateTimeRange? _selectedDateRange;
+  double? _currentBalance;
 
   @override
   void initState() {
@@ -35,8 +36,11 @@ class _AnalyticsViewState extends State<AnalyticsView> {
       });
 
       final transactions = await _smsService.getTransactions();
+      final balance = await _smsService.getCurrentBalance();
+
       setState(() {
         _transactions = transactions;
+        _currentBalance = balance;
         _filterTransactions();
         _isLoading = false;
       });
@@ -387,19 +391,20 @@ class _AnalyticsViewState extends State<AnalyticsView> {
     double totalIncoming = 0;
     double totalOutgoing = 0;
     double totalPayments = 0;
-    double totalBalance = 0;
+    double totalBalance = _currentBalance ?? 0;
 
     for (var transaction in _filteredTransactions) {
       if (transaction.isIncoming) {
         totalIncoming += transaction.amount;
-        totalBalance += transaction.amount;
       } else {
-        if (transaction.description.toLowerCase().contains('payment of')) {
+        if (transaction.description.toLowerCase().contains('payment of') ||
+            transaction.description
+                .toLowerCase()
+                .contains('MTN RWANDACELL LIMITED')) {
           totalPayments += transaction.amount;
         } else {
           totalOutgoing += transaction.amount;
         }
-        totalBalance -= transaction.amount;
       }
     }
 
@@ -409,13 +414,18 @@ class _AnalyticsViewState extends State<AnalyticsView> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 20),
-          Text(
-            'Financial Overview',
-            style: TextStyle(
-              fontSize: isSmallScreen ? 16 : 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
+          Row(
+            children: [
+              Text(
+                'Financial Overview',
+                style: TextStyle(
+                  fontSize: isSmallScreen ? 16 : 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+              const Spacer(),
+            ],
           ),
           const SizedBox(height: 16),
           LayoutBuilder(
@@ -481,7 +491,7 @@ class _AnalyticsViewState extends State<AnalyticsView> {
                     children: [
                       Expanded(
                         child: _buildOverviewCard(
-                          'Total Balance',
+                          'Current Balance',
                           totalBalance,
                           totalBalance >= 0 ? Colors.green : Colors.red,
                           Icons.account_balance_wallet,

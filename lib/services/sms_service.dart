@@ -14,9 +14,9 @@ class SmsService {
     }
 
     try {
-      final List<dynamic> messages = await platform
-          .invokeMethod('getSmsMessages', {'address': 'M-Money'});
-      
+      final List<dynamic> messages =
+          await platform.invokeMethod('getSmsMessages', {'address': 'M-Money'});
+
       developer.log('Received ${messages.length} messages');
 
       // Filter M-Money transaction messages
@@ -25,11 +25,15 @@ class SmsService {
               message['body'] != null &&
               message['address'] == 'M-Money' &&
               (message['body'].toString().contains('transferred to') ||
-               message['body'].toString().contains('payment of') ||
-               message['body'].toString().contains('received')))
+                  message['body'].toString().contains('payment of') ||
+                  message['body'].toString().contains('received') ||
+                  message['body']
+                      .toString()
+                      .contains('MTN RWANDACELL LIMITED')))
           .toList();
 
-      developer.log('Filtered ${filteredMessages.length} M-Money transaction messages');
+      developer.log(
+          'Filtered ${filteredMessages.length} M-Money transaction messages');
 
       final transactions = filteredMessages
           .map((message) {
@@ -57,6 +61,28 @@ class SmsService {
     } catch (e) {
       developer.log('Error reading SMS: $e', error: e);
       throw Exception('Failed to read SMS: $e');
+    }
+  }
+
+  // Add method to get current balance from the most recent transaction
+  Future<double?> getCurrentBalance() async {
+    try {
+      final transactions = await getTransactions();
+
+      // Find the most recent transaction that has balance information
+      for (final transaction in transactions) {
+        if (transaction.balance != null) {
+          developer.log(
+              'Found balance: ${transaction.balance} from transaction dated ${transaction.date}');
+          return transaction.balance;
+        }
+      }
+
+      developer.log('No balance found in recent transactions');
+      return null;
+    } catch (e) {
+      developer.log('Error getting current balance: $e', error: e);
+      return null;
     }
   }
 }
