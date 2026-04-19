@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 class Transaction {
   final double amount;
   final String description;
@@ -5,6 +7,8 @@ class Transaction {
   final String? reference;
   final bool isIncoming;
   final double? balance;
+  final bool isPayment;
+  final bool isMokash;
 
   Transaction({
     required this.amount,
@@ -13,29 +17,70 @@ class Transaction {
     this.reference,
     required this.isIncoming,
     this.balance,
+    this.isPayment = false,
+    this.isMokash = false,
   });
 
+  Color get displayColor =>
+      isIncoming ? Colors.green : (isPayment ? Colors.orange : Colors.red);
+  IconData get displayIcon => isPayment
+      ? Icons.payment
+      : (isIncoming ? Icons.arrow_downward : Icons.arrow_upward);
+  String get amountPrefix => isIncoming ? "+" : "-";
+
   factory Transaction.fromSms(String sms, {required DateTime messageDate}) {
-    final isIncoming =
-        sms.contains('received') || sms.contains('have received');
+    final lowerSms = sms.toLowerCase();
+
+    bool isIncoming = lowerSms.contains('received') || lowerSms.contains('have received');
+    bool isMokash = false;
+
+    if (lowerSms.contains('to your mokash')) {
+      isMokash = true;
+      isIncoming = true; // Money entering MoKash
+    } else if (lowerSms.contains('from your mokash')) {
+      isMokash = true;
+      isIncoming = false; // Money leaving MoKash
+    } else if (lowerSms.contains('mokash')) {
+      isMokash = true;
+    }
+
     final amount = _extractAmount(sms);
     final reference = _extractReference(sms);
     final balance = _extractBalance(sms);
+    final description = _generateDescription(sms);
+    
+    final lowerDesc = description.toLowerCase();
+    final isPayment = lowerDesc.contains('payment of') ||
+        lowerDesc.contains('mtn rwandacell') ||
+        lowerDesc.contains('a transaction of');
 
     return Transaction(
       amount: amount,
-      description: _generateDescription(sms),
+      description: description,
       date: messageDate,
       reference: reference,
       isIncoming: isIncoming,
       balance: balance,
+      isPayment: isPayment,
+      isMokash: isMokash,
     );
   }
 
   static double _extractAmount(String sms) {
-    final regex = RegExp(r'(\d+,?\d*) RWF');
+    final regex =
+        RegExp(r'(\d+[,.]?\d*)\s*(?:RWF|FRW|Rwf)', caseSensitive: false);
     final match = regex.firstMatch(sms);
-    if (match == null) return 0;
+    if (match == null) {
+      // Fallback: sometimes amount might just be digits after 'payment of ' or 'transferred '
+      final fallbackRegex = RegExp(
+          r'(?:payment of|transferred|received)\s*(\d+[,.]?\d*)',
+          caseSensitive: false);
+      final fallbackMatch = fallbackRegex.firstMatch(sms);
+      if (fallbackMatch != null) {
+        return double.parse(fallbackMatch.group(1)!.replaceAll(',', ''));
+      }
+      return 0;
+    }
     return double.parse(match.group(1)!.replaceAll(',', ''));
   }
 
@@ -68,8 +113,33 @@ class Transaction {
   }
 
   static String _generateDescription(String sms) {
-    // Extract the main transaction description
-    // This is a simple implementation - you might want to enhance it
-    return sms.split('.')[0];
+    if (sms.isEmpty) return 'Unknown Transaction';
+
+    // Commonly, trailing parts like Fee, Balance, or Id carry metadata instead of the action descripton.
+    final delimiters = [
+      ' Fee',
+      ' fee',
+      ' Balance',
+      ' balance',
+      ' Id:',
+      ' ID:',
+      ' TxId',
+      ' Financial'
+    ];
+
+    String desc = sms;
+    for (final delimiter in delimiters) {
+      if (desc.contains(delimiter)) {
+        desc = desc.split(delimiter)[0];
+      }
+    }
+
+    // Fallback if no delimiter was hit, but there is a clear sentence ending
+    if (desc.length == sms.length && sms.contains('.')) {
+      desc = sms.split('.')[0];
+    }
+
+    // Strip trailing periods and whitespace
+    return desc.replaceAll(RegExp(r'[\.\s]+$'), '').trim();
   }
 }

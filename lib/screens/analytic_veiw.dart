@@ -21,6 +21,7 @@ class _AnalyticsViewState extends State<AnalyticsView> {
   String? _error;
   DateTimeRange? _selectedDateRange;
   double? _currentBalance;
+  double? _mokashBalance;
 
   @override
   void initState() {
@@ -36,11 +37,17 @@ class _AnalyticsViewState extends State<AnalyticsView> {
       });
 
       final transactions = await _smsService.getTransactions();
-      final balance = await _smsService.getCurrentBalance();
+      
+      final momoTxs = transactions.where((t) => !t.isMokash && t.balance != null);
+      final balance = momoTxs.isNotEmpty ? momoTxs.first.balance : null;
+      
+      final mokashTxs = transactions.where((t) => t.isMokash && t.balance != null);
+      final mokashBalance = mokashTxs.isNotEmpty ? mokashTxs.first.balance : null;
 
       setState(() {
         _transactions = transactions;
         _currentBalance = balance;
+        _mokashBalance = mokashBalance;
         _filterTransactions();
         _isLoading = false;
       });
@@ -392,15 +399,13 @@ class _AnalyticsViewState extends State<AnalyticsView> {
     double totalOutgoing = 0;
     double totalPayments = 0;
     double totalBalance = _currentBalance ?? 0;
+    double mokashBalanceStr = _mokashBalance ?? 0;
 
     for (var transaction in _filteredTransactions) {
       if (transaction.isIncoming) {
         totalIncoming += transaction.amount;
       } else {
-        if (transaction.description.toLowerCase().contains('payment of') ||
-            transaction.description
-                .toLowerCase()
-                .contains('MTN RWANDACELL LIMITED')) {
+        if (transaction.isPayment) {
           totalPayments += transaction.amount;
         } else {
           totalOutgoing += transaction.amount;
@@ -441,6 +446,15 @@ class _AnalyticsViewState extends State<AnalyticsView> {
                       totalBalance,
                       totalBalance >= 0 ? Colors.green : Colors.red,
                       Icons.account_balance_wallet,
+                      isSmallScreen: isSmallScreen,
+                      isFullWidth: true,
+                    ),
+                    const SizedBox(height: 12),
+                    _buildOverviewCard(
+                      'MoKash Balance',
+                      mokashBalanceStr,
+                      Colors.indigo,
+                      Icons.savings,
                       isSmallScreen: isSmallScreen,
                       isFullWidth: true,
                     ),
@@ -491,7 +505,7 @@ class _AnalyticsViewState extends State<AnalyticsView> {
                     children: [
                       Expanded(
                         child: _buildOverviewCard(
-                          'Current Balance',
+                          'MoMo Balance',
                           totalBalance,
                           totalBalance >= 0 ? Colors.green : Colors.red,
                           Icons.account_balance_wallet,
@@ -501,11 +515,35 @@ class _AnalyticsViewState extends State<AnalyticsView> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: _buildOverviewCard(
+                          'MoKash Balance',
+                          mokashBalanceStr,
+                          Colors.indigo,
+                          Icons.savings,
+                          isSmallScreen: isSmallScreen,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildOverviewCard(
                           'Transactions',
                           _filteredTransactions.length.toDouble(),
                           Colors.blue,
                           Icons.receipt_long,
                           isCount: true,
+                          isSmallScreen: isSmallScreen,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildOverviewCard(
+                          'Payments',
+                          totalPayments,
+                          Colors.orange,
+                          Icons.payment,
                           isSmallScreen: isSmallScreen,
                         ),
                       ),
@@ -534,15 +572,6 @@ class _AnalyticsViewState extends State<AnalyticsView> {
                         ),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 12),
-                  _buildOverviewCard(
-                    'Payments',
-                    totalPayments,
-                    Colors.orange,
-                    Icons.payment,
-                    isSmallScreen: isSmallScreen,
-                    isFullWidth: true,
                   ),
                 ],
               );

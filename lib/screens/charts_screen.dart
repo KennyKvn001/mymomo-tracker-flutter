@@ -126,7 +126,6 @@ class WeeklyChart extends StatelessWidget {
                 maxY: _getMaxAmount(weeklyData) * 1.2,
                 barTouchData: BarTouchData(
                   touchTooltipData: BarTouchTooltipData(
-                    tooltipRoundedRadius: 8,
                     getTooltipItem: (group, groupIndex, rod, rodIndex) {
                       final data = weeklyData[groupIndex];
                       final amount = rodIndex == 0 ? data.income : data.expense;
@@ -322,7 +321,6 @@ class MonthlyChart extends StatelessWidget {
                 maxY: _getMaxAmount(monthlyData) * 1.2,
                 barTouchData: BarTouchData(
                   touchTooltipData: BarTouchTooltipData(
-                    tooltipRoundedRadius: 8,
                     getTooltipItem: (group, groupIndex, rod, rodIndex) {
                       final data = monthlyData[groupIndex];
                       final amount = rodIndex == 0 ? data.income : data.expense;
@@ -515,7 +513,6 @@ class YearlyChart extends StatelessWidget {
                 maxY: _getMaxAmount(yearlyData) * 1.2,
                 barTouchData: BarTouchData(
                   touchTooltipData: BarTouchTooltipData(
-                    tooltipRoundedRadius: 8,
                     getTooltipItem: (group, groupIndex, rod, rodIndex) {
                       final data = yearlyData[groupIndex];
                       final amount = rodIndex == 0 ? data.income : data.expense;

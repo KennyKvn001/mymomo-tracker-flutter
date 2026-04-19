@@ -363,10 +363,7 @@ class _TransactionsState extends State<Transactions> {
       if (transaction.isIncoming) {
         totalIncome += transaction.amount;
       } else {
-        if (transaction.description.toLowerCase().contains('payment of') ||
-            transaction.description
-                .toLowerCase()
-                .contains('A transaction of')) {
+        if (transaction.isPayment) {
           totalPayments += transaction.amount;
         } else {
           totalExpenses += transaction.amount;
@@ -688,19 +685,6 @@ class _TransactionsState extends State<Transactions> {
 
   Widget _buildTransactionCard(Transaction transaction) {
     final formatter = NumberFormat("#,##0", "en_US");
-    final bool isPayment =
-        transaction.description.toLowerCase().contains('payment of') ||
-            transaction.description
-                .toLowerCase()
-                .contains('MTN RWANDACELL LIMITED');
-    final amountColor = transaction.isIncoming
-        ? Colors.green
-        : (isPayment ? Colors.orange : Colors.red);
-    final amountPrefix = transaction.isIncoming ? "+" : "-";
-    final IconData transactionIcon = isPayment
-        ? Icons.payment
-        : (transaction.isIncoming ? Icons.arrow_downward : Icons.arrow_upward);
-
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenWidth < 400;
 
@@ -727,12 +711,12 @@ class _TransactionsState extends State<Transactions> {
               Container(
                 padding: EdgeInsets.all(isSmallScreen ? 8 : 10),
                 decoration: BoxDecoration(
-                  color: amountColor.withOpacity(0.1),
+                  color: transaction.displayColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
-                  transactionIcon,
-                  color: amountColor,
+                  transaction.displayIcon,
+                  color: transaction.displayColor,
                   size: isSmallScreen ? 16 : 20,
                 ),
               ),
@@ -782,11 +766,11 @@ class _TransactionsState extends State<Transactions> {
                   FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Text(
-                      '$amountPrefix${formatter.format(transaction.amount)} RWF',
+                      '${transaction.amountPrefix}${formatter.format(transaction.amount)} RWF',
                       style: TextStyle(
                         fontSize: isSmallScreen ? 13 : 15,
                         fontWeight: FontWeight.bold,
-                        color: amountColor,
+                        color: transaction.displayColor,
                       ),
                     ),
                   ),

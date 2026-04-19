@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import '../models/transaction.dart';
 import '../services/sms_service.dart';
-import 'package:intl/intl.dart';
 import 'tansactions.dart';
 import 'analytic_veiw.dart';
+import 'package:shadcn_ui/shadcn_ui.dart' hide LucideIcons;
+import 'package:lucide_icons/lucide_icons.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 class HomeView extends StatefulWidget {
   const HomeView({super.key});
@@ -145,25 +147,25 @@ class _HomeViewState extends State<HomeView> {
           _buildFeatureCard(
             'Track Your Money',
             'Monitor all your MoMo transactions in one place',
-            Icons.account_balance_wallet,
+            LucideIcons.wallet,
             Colors.blue,
           ),
           _buildFeatureCard(
             'Smart Analytics',
             'Get insights into your spending patterns and habits',
-            Icons.analytics,
+            LucideIcons.pieChart,
             Colors.purple,
           ),
           _buildFeatureCard(
             'Budget Planning',
             'Set budgets and track your financial goals',
-            Icons.savings,
+            LucideIcons.piggyBank,
             Colors.orange,
           ),
           _buildFeatureCard(
             'Coming Soon',
             'More exciting features are on the way!',
-            Icons.rocket_launch,
+            LucideIcons.rocket,
             Colors.pink,
           ),
         ],
@@ -251,7 +253,7 @@ class _HomeViewState extends State<HomeView> {
               Expanded(
                 child: _buildActionCard(
                   'Transactions',
-                  Icons.list_alt,
+                  LucideIcons.list,
                   Colors.blue,
                   () {
                     Navigator.push(
@@ -267,7 +269,7 @@ class _HomeViewState extends State<HomeView> {
               Expanded(
                 child: _buildActionCard(
                   'Analytics',
-                  Icons.bar_chart,
+                  LucideIcons.barChart2,
                   Colors.purple,
                   () {
                     Navigator.push(
@@ -284,7 +286,7 @@ class _HomeViewState extends State<HomeView> {
               Expanded(
                 child: _buildActionCard(
                   'Budget',
-                  Icons.account_balance_wallet,
+                  LucideIcons.walletCards,
                   Colors.orange,
                   () {
                     // Navigate to budget - you can implement this
@@ -294,7 +296,10 @@ class _HomeViewState extends State<HomeView> {
                   },
                 ),
               ),
-            ],
+            ]
+                .animate(interval: 100.ms)
+                .fade(duration: 400.ms)
+                .slideY(begin: 0.2, curve: Curves.easeOutQuad),
           ),
         ],
       ),
@@ -366,7 +371,7 @@ class _HomeViewState extends State<HomeView> {
                   color: Colors.black87,
                 ),
               ),
-              TextButton(
+              ShadButton.outline(
                 onPressed: () {
                   Navigator.push(
                     context,
@@ -375,13 +380,7 @@ class _HomeViewState extends State<HomeView> {
                     ),
                   );
                 },
-                child: const Text(
-                  'View All',
-                  style: TextStyle(
-                    color: Colors.green,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
+                child: const Text('View All'),
               ),
             ],
           ),
@@ -495,8 +494,13 @@ class _HomeViewState extends State<HomeView> {
         ],
       ),
       child: Column(
-        children: recentTransactions.map((transaction) {
-          return _buildTransactionItem(transaction);
+        children: recentTransactions.asMap().entries.map((entry) {
+          final index = entry.key;
+          final transaction = entry.value;
+          return _buildTransactionItem(transaction)
+              .animate()
+              .fade(duration: 400.ms, delay: (index * 100).ms)
+              .slideX(begin: 0.1, duration: 400.ms, curve: Curves.easeOutQuad);
         }).toList(),
       ),
     );
@@ -504,18 +508,6 @@ class _HomeViewState extends State<HomeView> {
 
   Widget _buildTransactionItem(Transaction transaction) {
     final formatter = NumberFormat("#,##0", "en_US");
-    final bool isPayment =
-        transaction.description.toLowerCase().contains('payment of') ||
-            transaction.description
-                .toLowerCase()
-                .contains('MTN RWANDACELL LIMITED');
-    final amountColor = transaction.isIncoming
-        ? Colors.green
-        : (isPayment ? Colors.orange : Colors.red);
-    final amountPrefix = transaction.isIncoming ? "+" : "-";
-    final IconData transactionIcon = isPayment
-        ? Icons.payment
-        : (transaction.isIncoming ? Icons.arrow_downward : Icons.arrow_upward);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -532,12 +524,12 @@ class _HomeViewState extends State<HomeView> {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: amountColor.withOpacity(0.1),
+              color: transaction.displayColor.withOpacity(0.1),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(
-              transactionIcon,
-              color: amountColor,
+              transaction.displayIcon,
+              color: transaction.displayColor,
               size: 20,
             ),
           ),
@@ -568,11 +560,11 @@ class _HomeViewState extends State<HomeView> {
             ),
           ),
           Text(
-            '$amountPrefix${formatter.format(transaction.amount)} RWF',
+            '${transaction.amountPrefix}${formatter.format(transaction.amount)} RWF',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.bold,
-              color: amountColor,
+              color: transaction.displayColor,
             ),
           ),
         ],
