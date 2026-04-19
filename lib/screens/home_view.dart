@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
@@ -18,20 +20,29 @@ class _HomeViewState extends State<HomeView> {
   double? _momoBalance;
   double? _mokashBalance;
   bool _isLoading = true;
-  bool _hideBalance = true;
-  final PageController _insightsController = PageController();
-  int _currentInsight = 0;
+  final Set<String> _hiddenCards = {'momo', 'mokash'};
+  _OverviewPeriod _period = _OverviewPeriod.month;
+  DateTimeRange? _customRange;
+
+  String _cardKey(bool isMokash) => isMokash ? 'mokash' : 'momo';
+
+  bool _isCardHidden(bool isMokash) => _hiddenCards.contains(_cardKey(isMokash));
+
+  void _toggleCardHidden(bool isMokash) {
+    final key = _cardKey(isMokash);
+    setState(() {
+      if (_hiddenCards.contains(key)) {
+        _hiddenCards.remove(key);
+      } else {
+        _hiddenCards.add(key);
+      }
+    });
+  }
 
   @override
   void initState() {
     super.initState();
     _loadTransactions();
-  }
-
-  @override
-  void dispose() {
-    _insightsController.dispose();
-    super.dispose();
   }
 
   Future<void> _loadTransactions() async {
@@ -40,22 +51,24 @@ class _HomeViewState extends State<HomeView> {
         _isLoading = true;
       });
 
-      final transactions = await _smsService.getTransactions();
+      final snapshot = await _smsService.getCategorizedTransactions();
 
-      final momoTxs =
-          transactions.where((t) => !t.isMokash && t.balance != null);
-      final momoBalance =
-          momoTxs.isNotEmpty ? momoTxs.first.balance : null;
-
-      final mokashTxs =
-          transactions.where((t) => t.isMokash && t.balance != null);
-      final mokashBalance =
-          mokashTxs.isNotEmpty ? mokashTxs.first.balance : null;
+      // Log exactly what the cards will display, so the values seen on
+      // screen can be cross-checked against the parser output in the
+      // terminal.
+      developer.log(
+        '[HomeView] cards will show -> '
+        'MoMo: ${_displayString(snapshot.momoBalance, isMokash: false)}  |  '
+        'MoKash: ${_displayString(snapshot.mokashBalance, isMokash: true)}  '
+        '(tx total=${snapshot.all.length}, '
+        'momo=${snapshot.momo.length}, mokash=${snapshot.mokash.length})',
+        name: 'HomeView',
+      );
 
       setState(() {
-        _transactions = transactions;
-        _momoBalance = momoBalance;
-        _mokashBalance = mokashBalance;
+        _transactions = snapshot.all;
+        _momoBalance = snapshot.momoBalance;
+        _mokashBalance = snapshot.mokashBalance;
         _isLoading = false;
       });
     } catch (e) {
@@ -78,6 +91,8 @@ class _HomeViewState extends State<HomeView> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildHeader(),
+          const SizedBox(height: 14),
+          _buildActionsRow(),
           const SizedBox(height: 14),
           _buildOverview(),
         ],
@@ -180,6 +195,15 @@ class _HomeViewState extends State<HomeView> {
         RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},');
   }
 
+  /// Returns the string the card actually renders for a balance value:
+  /// `---` when null, `••• •••` when hidden, otherwise the formatted amount
+  /// with the `RWF` suffix (matching the credit-card layout).
+  String _displayString(double? balance, {required bool isMokash}) {
+    if (balance == null) return '---';
+    if (_isCardHidden(isMokash)) return '••• ••• RWF';
+    return '${_formatAmount(balance)} RWF';
+  }
+
   String _timeAgo(DateTime date) {
     final diff = DateTime.now().difference(date);
     if (diff.inMinutes < 1) return 'Just now';
@@ -229,6 +253,7 @@ class _HomeViewState extends State<HomeView> {
   }) {
     final trend = _computeTrend(mokash: isMokash);
     final lastTx = _latestFor(mokash: isMokash);
+    final hideBalance = _isCardHidden(isMokash);
 
     return Container(
       margin: const EdgeInsets.only(right: 16, bottom: 24, top: 2),
@@ -333,8 +358,7 @@ class _HomeViewState extends State<HomeView> {
                               Text(
                                 subtitle,
                                 style: TextStyle(
-                                  color:
-                                      Colors.white.withValues(alpha: 0.65),
+                                  color: Colors.white.withValues(alpha: 0.65),
                                   fontSize: 9.5,
                                   fontWeight: FontWeight.w600,
                                   letterSpacing: 1.2,
@@ -345,8 +369,7 @@ class _HomeViewState extends State<HomeView> {
                         ],
                       ),
                       GestureDetector(
-                        onTap: () => setState(
-                            () => _hideBalance = !_hideBalance),
+                        onTap: () => _toggleCardHidden(isMokash),
                         child: Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
@@ -358,9 +381,7 @@ class _HomeViewState extends State<HomeView> {
                             ),
                           ),
                           child: Icon(
-                            _hideBalance
-                                ? LucideIcons.eyeOff
-                                : LucideIcons.eye,
+                            hideBalance ? LucideIcons.eyeOff : LucideIcons.eye,
                             color: Colors.white,
                             size: 14,
                           ),
@@ -397,7 +418,7 @@ class _HomeViewState extends State<HomeView> {
                             Flexible(
                               child: Text(
                                 balance != null
-                                    ? (_hideBalance
+                                    ? (hideBalance
                                         ? '••• •••'
                                         : _formatAmount(balance))
                                     : '---',
@@ -417,8 +438,7 @@ class _HomeViewState extends State<HomeView> {
                               child: Text(
                                 'RWF',
                                 style: TextStyle(
-                                  color:
-                                      Colors.white.withValues(alpha: 0.75),
+                                  color: Colors.white.withValues(alpha: 0.75),
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
                                   letterSpacing: 0.5,
@@ -486,8 +506,7 @@ class _HomeViewState extends State<HomeView> {
                                   '${_formatAmount(lastTx.amount)} RWF · ${_timeAgo(lastTx.date)}',
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                    color:
-                                        Colors.white.withValues(alpha: 0.7),
+                                    color: Colors.white.withValues(alpha: 0.7),
                                     fontSize: 11,
                                     fontWeight: FontWeight.w500,
                                   ),
@@ -516,22 +535,32 @@ class _HomeViewState extends State<HomeView> {
     );
   }
 
-  List<({
-    String tag,
-    String primary,
-    String secondary,
-    IconData icon,
-    String detail,
-  })> _insights() {
+  List<
+      ({
+        String label,
+        String tag,
+        String primary,
+        String secondary,
+        IconData icon,
+        String detail,
+      })> _insights() {
     final now = DateTime.now();
-    final startOfMonth = DateTime(now.year, now.month);
-    final monthly = _transactions
-        .where((t) => !t.date.isBefore(startOfMonth))
-        .toList();
+    final start = _periodStart(now);
+    final periodTag = _periodTag();
+    final endExclusive = _periodEndExclusive();
+    final filtered = _period == _OverviewPeriod.all
+        ? _transactions
+        : _transactions.where((t) {
+            if (t.date.isBefore(start)) return false;
+            if (endExclusive != null && !t.date.isBefore(endExclusive)) {
+              return false;
+            }
+            return true;
+          }).toList();
 
     double income = 0;
     double expense = 0;
-    for (final t in monthly) {
+    for (final t in filtered) {
       if (t.isIncoming) {
         income += t.amount;
       } else {
@@ -540,27 +569,29 @@ class _HomeViewState extends State<HomeView> {
     }
     final net = income - expense;
     final netInsight = (
-      tag: net >= 0 ? 'NET SAVINGS · THIS MONTH' : 'NET SPEND · THIS MONTH',
-      primary: monthly.isEmpty
+      label: net >= 0 ? 'Net savings' : 'Net spend',
+      tag: '${net >= 0 ? 'NET SAVINGS' : 'NET SPEND'} · $periodTag',
+      primary: filtered.isEmpty
           ? '—'
           : '${net >= 0 ? '+' : '-'}${_formatAmount(net.abs())}',
-      secondary: monthly.isEmpty
-          ? 'No activity yet this month'
+      secondary: filtered.isEmpty
+          ? 'No activity in this window'
           : _inflowOutflowLine(income, expense),
       icon: LucideIcons.wallet,
-      detail: monthly.isEmpty
+      detail: filtered.isEmpty
           ? 'Once transactions come in, your net flow will appear here.'
-          : 'Across ${monthly.length} transactions. Income ${_formatAmount(income)} RWF, expenses ${_formatAmount(expense)} RWF.',
+          : 'Across ${filtered.length} transactions. Income ${_formatAmount(income)} RWF, expenses ${_formatAmount(expense)} RWF.',
     );
 
-    final sortedByAmount = [...monthly]
+    final sortedByAmount = [...filtered]
       ..sort((a, b) => b.amount.compareTo(a.amount));
     final top = sortedByAmount.isNotEmpty ? sortedByAmount.first : null;
     final biggestInsight = (
-      tag: 'LARGEST · THIS MONTH',
+      label: 'Largest move',
+      tag: 'LARGEST · $periodTag',
       primary: top != null ? _formatAmount(top.amount) : '—',
       secondary: top != null
-          ? '${_truncate(top.description, 34)} · ${_shortDate(top.date)}'
+          ? '${_truncate(top.description, 28)} · ${_shortDate(top.date)}'
           : 'No transactions yet',
       icon: top != null && top.isIncoming
           ? LucideIcons.arrowDownLeft
@@ -571,9 +602,8 @@ class _HomeViewState extends State<HomeView> {
     );
 
     final dayTotals = <int, double>{};
-    for (final t in _transactions) {
-      dayTotals[t.date.weekday] =
-          (dayTotals[t.date.weekday] ?? 0) + t.amount;
+    for (final t in filtered) {
+      dayTotals[t.date.weekday] = (dayTotals[t.date.weekday] ?? 0) + t.amount;
     }
     int? topDay;
     double topDayValue = 0;
@@ -593,10 +623,11 @@ class _HomeViewState extends State<HomeView> {
       'Sundays',
     ];
     final activeInsight = (
-      tag: 'MOST ACTIVE · ALL TIME',
+      label: 'Most active',
+      tag: 'MOST ACTIVE · $periodTag',
       primary: topDay != null ? dayNames[topDay! - 1] : '—',
       secondary: topDay != null
-          ? '${_formatAmount(topDayValue)} RWF moved total'
+          ? '${_formatAmount(topDayValue)} RWF moved'
           : 'No rhythm yet',
       icon: LucideIcons.calendarDays,
       detail: topDay != null
@@ -607,9 +638,11 @@ class _HomeViewState extends State<HomeView> {
     final momo = _momoBalance ?? 0;
     final mokash = _mokashBalance ?? 0;
     final total = momo + mokash;
+    final hideCombined = _isCardHidden(false) || _isCardHidden(true);
     final splitInsight = (
+      label: 'Combined balance',
       tag: 'NET WORTH · COMBINED',
-      primary: _hideBalance ? '••• •••' : _formatAmount(total),
+      primary: hideCombined ? '••• •••' : _formatAmount(total),
       secondary: total == 0
           ? 'Waiting for balance data'
           : 'MoMo ${(momo / total * 100).toStringAsFixed(0)}%  ·  MoKash ${(mokash / total * 100).toStringAsFixed(0)}%',
@@ -622,6 +655,103 @@ class _HomeViewState extends State<HomeView> {
     return [netInsight, biggestInsight, activeInsight, splitInsight];
   }
 
+  DateTime _periodStart(DateTime now) {
+    switch (_period) {
+      case _OverviewPeriod.week:
+        return now.subtract(const Duration(days: 7));
+      case _OverviewPeriod.month:
+        return DateTime(now.year, now.month);
+      case _OverviewPeriod.all:
+        return DateTime(2000);
+      case _OverviewPeriod.custom:
+        return _customRange?.start ?? DateTime(2000);
+    }
+  }
+
+  /// Inclusive end of the active overview window (start of the day after).
+  /// Returns null for non-custom periods, which are treated as open-ended
+  /// up to "now".
+  DateTime? _periodEndExclusive() {
+    if (_period != _OverviewPeriod.custom || _customRange == null) {
+      return null;
+    }
+    final end = _customRange!.end;
+    return DateTime(end.year, end.month, end.day).add(const Duration(days: 1));
+  }
+
+  String _periodTag() {
+    switch (_period) {
+      case _OverviewPeriod.week:
+        return 'THIS WEEK';
+      case _OverviewPeriod.month:
+        return 'THIS MONTH';
+      case _OverviewPeriod.all:
+        return 'ALL TIME';
+      case _OverviewPeriod.custom:
+        if (_customRange == null) return 'CUSTOM';
+        return '${_shortDate(_customRange!.start)} – ${_shortDate(_customRange!.end)}'
+            .toUpperCase();
+    }
+  }
+
+  String _periodLabel() {
+    switch (_period) {
+      case _OverviewPeriod.week:
+        return 'This week';
+      case _OverviewPeriod.month:
+        return 'This month';
+      case _OverviewPeriod.all:
+        return 'All time';
+      case _OverviewPeriod.custom:
+        if (_customRange == null) return 'Custom';
+        return '${_shortDate(_customRange!.start)} – ${_shortDate(_customRange!.end)}';
+    }
+  }
+
+  Future<void> _choosePeriod() async {
+    HapticFeedback.selectionClick();
+    final picked = await showModalBottomSheet<_OverviewPeriod>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (_) => _OverviewPeriodSheet(current: _period),
+    );
+    if (picked == null || !mounted) return;
+
+    if (picked == _OverviewPeriod.custom) {
+      final now = DateTime.now();
+      final initial = _customRange ??
+          DateTimeRange(
+            start: now.subtract(const Duration(days: 30)),
+            end: now,
+          );
+      final range = await showDateRangePicker(
+        context: context,
+        firstDate: DateTime(2018),
+        lastDate: now,
+        initialDateRange: initial,
+        builder: (context, child) => Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: Theme.of(context).colorScheme.copyWith(
+                  primary: const Color(0xFF3D2C8D),
+                  onPrimary: Colors.white,
+                ),
+          ),
+          child: child ?? const SizedBox.shrink(),
+        ),
+      );
+      if (range == null || !mounted) return;
+      setState(() {
+        _period = _OverviewPeriod.custom;
+        _customRange = range;
+      });
+    } else {
+      setState(() => _period = picked);
+    }
+  }
+
   String _inflowOutflowLine(double income, double expense) {
     return 'in ${_formatAmount(income)} · out ${_formatAmount(expense)}';
   }
@@ -631,14 +761,25 @@ class _HomeViewState extends State<HomeView> {
 
   String _shortDate(DateTime d) {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${months[d.month - 1]} ${d.day}';
   }
 
   void _openInsightDetail(
     ({
+      String label,
       String tag,
       String primary,
       String secondary,
@@ -651,8 +792,7 @@ class _HomeViewState extends State<HomeView> {
       context: context,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.vertical(top: Radius.circular(28)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (_) => Padding(
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
@@ -679,8 +819,7 @@ class _HomeViewState extends State<HomeView> {
                     color: const Color(0xFFF1F3F5),
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: Icon(insight.icon,
-                      color: Colors.black87, size: 18),
+                  child: Icon(insight.icon, color: Colors.black87, size: 18),
                 ),
                 const SizedBox(width: 12),
                 Text(
@@ -729,13 +868,51 @@ class _HomeViewState extends State<HomeView> {
     );
   }
 
+  Widget _buildActionsRow() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(
+        children: [
+          Expanded(
+            child: _buildOverviewAction(
+              label: 'Transactions',
+              icon: LucideIcons.arrowRightLeft,
+              isPrimary: true,
+              onTap: () {
+                HapticFeedback.lightImpact();
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const Transactions()),
+                );
+              },
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: _buildOverviewAction(
+              label: 'Report',
+              icon: LucideIcons.fileChartColumn,
+              isPrimary: false,
+              onTap: () {
+                HapticFeedback.lightImpact();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Reports coming soon!')),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    ).animate().fade().slideY(begin: 0.1);
+  }
+
   Widget _buildOverview() {
     final insights = _insights();
 
     return Expanded(
       child: Container(
         margin: const EdgeInsets.fromLTRB(20, 0, 20, 100),
-        padding: const EdgeInsets.fromLTRB(22, 20, 22, 18),
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(28),
@@ -750,84 +927,87 @@ class _HomeViewState extends State<HomeView> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Overview',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.black,
-                    letterSpacing: -0.4,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 0, 4, 14),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Overview',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.black,
+                      letterSpacing: -0.4,
+                    ),
                   ),
-                ),
-                Row(
-                  children: List.generate(insights.length, (i) {
-                    final active = i == _currentInsight;
-                    return AnimatedContainer(
+                  GestureDetector(
+                    onTap: _choosePeriod,
+                    behavior: HitTestBehavior.opaque,
+                    child: AnimatedSwitcher(
                       duration: const Duration(milliseconds: 220),
-                      curve: Curves.easeOut,
-                      margin: const EdgeInsets.only(left: 4),
-                      width: active ? 18 : 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: active
-                            ? Colors.black
-                            : Colors.black.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(3),
+                      transitionBuilder: (child, anim) => FadeTransition(
+                        opacity: anim,
+                        child: SizeTransition(
+                          axis: Axis.horizontal,
+                          sizeFactor: anim,
+                          child: child,
+                        ),
                       ),
-                    );
-                  }),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Expanded(
-              child: PageView.builder(
-                controller: _insightsController,
-                itemCount: insights.length,
-                onPageChanged: (i) {
-                  HapticFeedback.selectionClick();
-                  setState(() => _currentInsight = i);
-                },
-                itemBuilder: (_, i) => _buildInsightCard(insights[i]),
+                      child: Container(
+                        key: ValueKey(_period),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 7,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF1F3F5),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _periodLabel(),
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.4,
+                                color: Colors.black.withValues(alpha: 0.7),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Icon(
+                              LucideIcons.chevronsUpDown,
+                              size: 12,
+                              color: Colors.black.withValues(alpha: 0.45),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildOverviewAction(
-                    label: 'Transact',
-                    icon: LucideIcons.arrowRightLeft,
-                    isPrimary: true,
-                    onTap: () {
-                      HapticFeedback.lightImpact();
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const Transactions()),
-                      );
-                    },
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 260),
+                switchInCurve: Curves.easeOut,
+                switchOutCurve: Curves.easeIn,
+                child: ListView.separated(
+                  key: ValueKey(_period),
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: insights.length,
+                  separatorBuilder: (_, __) => Divider(
+                    height: 1,
+                    thickness: 1,
+                    color: Colors.black.withValues(alpha: 0.04),
                   ),
+                  itemBuilder: (_, i) => _buildInsightRow(insights[i]),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _buildOverviewAction(
-                    label: 'Report',
-                    icon: LucideIcons.fileChartColumn,
-                    isPrimary: false,
-                    onTap: () {
-                      HapticFeedback.lightImpact();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text('Reports coming soon!')),
-                      );
-                    },
-                  ),
-                ),
-              ],
+              ),
             ),
           ],
         ),
@@ -835,8 +1015,9 @@ class _HomeViewState extends State<HomeView> {
     );
   }
 
-  Widget _buildInsightCard(
+  Widget _buildInsightRow(
     ({
+      String label,
       String tag,
       String primary,
       String secondary,
@@ -844,86 +1025,83 @@ class _HomeViewState extends State<HomeView> {
       String detail,
     }) insight,
   ) {
-    return GestureDetector(
-      onTap: () => _openInsightDetail(insight),
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF7F8FA),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _openInsightDetail(insight),
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF4F1FB),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  insight.icon,
+                  size: 18,
+                  color: const Color(0xFF3D2C8D),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(7),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(10),
+                    Text(
+                      insight.label,
+                      style: const TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.black,
+                        letterSpacing: -0.1,
                       ),
-                      child: Icon(insight.icon,
-                          size: 14, color: Colors.black87),
                     ),
-                    const SizedBox(width: 10),
-                    Flexible(
-                      child: Text(
-                        insight.tag,
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.2,
-                          color: Colors.black.withValues(alpha: 0.5),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                    const SizedBox(height: 2),
+                    Text(
+                      insight.secondary,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.black.withValues(alpha: 0.5),
                       ),
                     ),
                   ],
                 ),
-                Icon(
-                  LucideIcons.chevronRight,
-                  size: 16,
-                  color: Colors.black.withValues(alpha: 0.35),
-                ),
-              ],
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                FittedBox(
+              ),
+              const SizedBox(width: 10),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 130),
+                child: FittedBox(
                   fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
+                  alignment: Alignment.centerRight,
                   child: Text(
                     insight.primary,
                     style: const TextStyle(
-                      fontSize: 26,
+                      fontSize: 16,
                       fontWeight: FontWeight.w800,
                       color: Colors.black,
-                      letterSpacing: -0.6,
+                      letterSpacing: -0.3,
                     ),
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  insight.secondary,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.black.withValues(alpha: 0.55),
-                  ),
-                ),
-              ],
-            ),
-          ],
+              ),
+              const SizedBox(width: 6),
+              Icon(
+                LucideIcons.chevronRight,
+                size: 16,
+                color: Colors.black.withValues(alpha: 0.3),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -935,26 +1113,37 @@ class _HomeViewState extends State<HomeView> {
     required bool isPrimary,
     required VoidCallback onTap,
   }) {
-    final bg = isPrimary ? Colors.black : const Color(0xFFF1F3F5);
-    final fg = isPrimary ? Colors.white : Colors.black87;
+    final accent = isPrimary
+        ? const Color(0xFF3D2C8D)
+        : Colors.black.withValues(alpha: 0.8);
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: BoxDecoration(
-          color: bg,
+          color: Colors.white,
           borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: Colors.black.withValues(alpha: 0.05),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
+          ],
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 16, color: fg),
+            Icon(icon, size: 16, color: accent),
             const SizedBox(width: 8),
             Text(
               label,
               style: TextStyle(
-                color: fg,
+                color: accent,
                 fontSize: 13.5,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.1,
@@ -971,5 +1160,136 @@ class _HomeViewState extends State<HomeView> {
     if (hour < 12) return 'morning';
     if (hour < 17) return 'afternoon';
     return 'evening';
+  }
+}
+
+enum _OverviewPeriod { week, month, all, custom }
+
+/// Bottom-sheet picker for the Overview window. Pops the chosen period
+/// back to the caller; for [_OverviewPeriod.custom] the caller follows
+/// up with `showDateRangePicker` to get the actual range.
+class _OverviewPeriodSheet extends StatelessWidget {
+  final _OverviewPeriod current;
+
+  const _OverviewPeriodSheet({required this.current});
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              'Show overview for',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: Colors.black,
+                letterSpacing: -0.3,
+              ),
+            ),
+            const SizedBox(height: 14),
+            _option(
+              context,
+              icon: LucideIcons.calendarRange,
+              label: 'This week',
+              value: _OverviewPeriod.week,
+            ),
+            _option(
+              context,
+              icon: LucideIcons.calendar,
+              label: 'This month',
+              value: _OverviewPeriod.month,
+            ),
+            _option(
+              context,
+              icon: LucideIcons.infinity,
+              label: 'All time',
+              value: _OverviewPeriod.all,
+            ),
+            const Divider(height: 22, thickness: 1),
+            _option(
+              context,
+              icon: LucideIcons.calendarClock,
+              label: 'Custom range…',
+              value: _OverviewPeriod.custom,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _option(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required _OverviewPeriod value,
+  }) {
+    final isSelected = current == value;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => Navigator.of(context).pop(value),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? const Color(0xFFF4F1FB)
+                      : const Color(0xFFF1F3F5),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  icon,
+                  size: 16,
+                  color: isSelected
+                      ? const Color(0xFF3D2C8D)
+                      : Colors.black87,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black,
+                  ),
+                ),
+              ),
+              if (isSelected)
+                const Icon(
+                  LucideIcons.check,
+                  size: 16,
+                  color: Color(0xFF3D2C8D),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

@@ -52,18 +52,33 @@ class MainActivity : FlutterActivity() {
                     val date = it.getLong(1)
                     val address = it.getString(2)
                     
-                    // Filter M-Money transaction messages
-                    if (address == "M-Money" && 
-                        (body.contains("transferred to", ignoreCase = true) ||
-                         body.contains("payment of", ignoreCase = true) ||
-                         body.contains("received", ignoreCase = true))) {
-                            
+                    // MoMo deposits/payments come from "M-Money".
+                    // MoKash deposits arrive embedded inside those M-Money
+                    // SMS (after "Message: -").
+                    // MoKash withdrawals/interest can arrive as STANDALONE
+                    // SMS that start with "Y'ello..." — these may be sent
+                    // from "M-Money" OR from a "MoKash"-named sender, so
+                    // we accept either. The keyword guard still protects
+                    // us from unrelated SMS.
+                    val senderOk = address != null && (
+                        address.equals("M-Money", ignoreCase = true) ||
+                        address.contains("mokash", ignoreCase = true)
+                    )
+                    val bodyOk =
+                        body.contains("transferred to", ignoreCase = true) ||
+                        body.contains("transferred", ignoreCase = true) &&
+                            body.contains("from your mokash", ignoreCase = true) ||
+                        body.contains("payment of", ignoreCase = true) ||
+                        body.contains("received", ignoreCase = true) ||
+                        body.contains("mokash", ignoreCase = true)
+
+                    if (senderOk && bodyOk) {
                         messages.add(mapOf(
                             "body" to body,
                             "date" to date,
                             "address" to address
                         ))
-                        Log.d(TAG, "Added M-Money transaction: $body")
+                        Log.d(TAG, "Added [$address] message: $body")
                     }
                 }
             }

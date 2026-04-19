@@ -12,6 +12,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
+  final PageController _pageController = PageController();
 
   static const List<Widget> _widgetOptions = <Widget>[
     HomeView(),
@@ -27,10 +28,25 @@ class _HomeScreenState extends State<HomeScreen> {
     _NavItem(icon: LucideIcons.circleUser, label: 'Profile'),
   ];
 
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
   void _onItemTapped(int index) {
+    if (index == _selectedIndex) return;
+    final distance = (index - _selectedIndex).abs();
     setState(() {
       _selectedIndex = index;
     });
+    _pageController.animateToPage(
+      index,
+      // Slightly longer when jumping across multiple tabs so the slide
+      // still feels paced rather than blurred.
+      duration: Duration(milliseconds: 320 + (distance - 1) * 60),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   @override
@@ -38,7 +54,14 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
       extendBody: true,
-      body: _widgetOptions.elementAt(_selectedIndex),
+      body: PageView(
+        controller: _pageController,
+        // Disable horizontal swipe to avoid clashing with the nested
+        // PageView that drives the account cards on the home view.
+        physics: const NeverScrollableScrollPhysics(),
+        onPageChanged: (i) => setState(() => _selectedIndex = i),
+        children: _widgetOptions,
+      ),
       bottomNavigationBar: SafeArea(
         top: false,
         child: Padding(
